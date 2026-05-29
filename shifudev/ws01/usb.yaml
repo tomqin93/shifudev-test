@@ -1,0 +1,118 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: usb-configmap
+  namespace: deviceshifu
+  labels:
+    app: deviceshifu-usb
+    workspace_id: "ce7954b9-f95b-413c-8427-48ec7c6e049a"
+    workspace_name: "ws01"
+  annotations:
+    workspace.id: "ce7954b9-f95b-413c-8427-48ec7c6e049a"
+    workspace.name: "ws01"
+    template.id: "usb-gps-v1"
+data:
+  driverProperties: |
+    driverSku: "USB GPS Device"
+    driverImage: gps-nats-shifu:latest
+  instructions: |
+    instructions:
+  telemetries: |
+    telemetries:
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: usb
+  namespace: deviceshifu
+  labels:
+    app: deviceshifu-usb
+    workspace_id: "ce7954b9-f95b-413c-8427-48ec7c6e049a"
+    workspace_name: "ws01"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: usb
+  template:
+    metadata:
+      labels:
+        app: usb
+        workspace_id: "ce7954b9-f95b-413c-8427-48ec7c6e049a"
+        workspace_name: "ws01"
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: usb
+          image: edgenesis/deviceshifu-usb-gps:v0.0.1
+          securityContext:
+            privileged: true
+          ports:
+            - containerPort: 8080
+              name: http
+          volumeMounts:
+            - name: deviceshifu-config
+              mountPath: "/etc/edgedevice/config"
+              readOnly: true
+            - name: serial-device
+              mountPath: /dev
+          env:
+            - name: EDGEDEVICE_NAME
+              value: "edgedevice-usb"
+            - name: EDGEDEVICE_NAMESPACE
+              value: "devices"
+            - name: NATS_SERVER_URL
+              value: "nats://12.12.12.12:123"
+            - name: NATS_TOPIC
+              value: "ws01.usb.gps.data"
+            - name: NATS_PUBLISH_INTERVAL
+              value: "1"
+            - name: BAUDRATE
+              value: "9600"
+      volumes:
+        - name: deviceshifu-config
+          configMap:
+            name: usb-configmap
+        - name: serial-device
+          hostPath:
+            path: /dev
+      serviceAccountName: edgedevice-sa
+---
+apiVersion: shifu.edgenesis.io/v1alpha1
+kind: EdgeDevice
+metadata:
+  name: edgedevice-usb
+  namespace: devices
+  labels:
+    app: deviceshifu-usb
+    workspace_id: "ce7954b9-f95b-413c-8427-48ec7c6e049a"
+    workspace_name: "ws01"
+  annotations:
+    workspace.id: "ce7954b9-f95b-413c-8427-48ec7c6e049a"
+    workspace.name: "ws01"
+    template.id: "usb-gps-v1"
+spec:
+  sku: "USB GPS Device"
+  protocol: "Serial"
+  address: "/dev/ttyACM0"
+  connection: "USB"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: usb-service
+  namespace: deviceshifu
+  labels:
+    app: deviceshifu-usb
+    workspace_id: "ce7954b9-f95b-413c-8427-48ec7c6e049a"
+    workspace_name: "ws01"
+spec:
+  selector:
+    app: usb
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+      name: http
+  type: ClusterIP 
